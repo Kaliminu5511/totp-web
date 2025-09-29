@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>TOTP Web — Demo</title>
+  <!-- Empfohlen: Content Security Policy (vereinfachtes Beispiel) -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial;background:#071021;color:#e6eef8;padding:20px}
+    .card{background:#071726;padding:16px;border-radius:10px;max-width:760px;margin:12px auto}
+    .row{display:flex;gap:8px;align-items:center}
+    input,button{padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+    .code{font-family:monospace;font-size:28px;letter-spacing:6px}
+    .muted{color:#98a3b3;font-size:13px}
+    .progress{height:10px;background:rgba(255,255,255,0.04);border-radius:8px;overflow:hidden}
+    .bar{height:100%;transition:width .2s linear}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>🔐 TOTP Web — Demo</h2>
+    <p class="muted">Die Demo verwendet ein <strong>öffentliches Test‑Secret</strong> (nur zum Ausprobieren). Secrets werden <strong>nicht</strong> zum Server gesendet.</p>
+
+    <h3>Demo‑Account (nur Test)</h3>
+    <div id="demoBox" class="row" style="justify-content:space-between;align-items:center">
+      <div>
+        <div><strong>Account:</strong> Test Account</div>
+        <div id="demoCode" class="code">------</div>
+      </div>
+      <div style="min-width:160px">
+        <div class="progress" style="margin-bottom:6px"><div id="demoBar" class="bar" style="width:100%;background:linear-gradient(90deg,#ff7b7b,#7dd3fc)"></div></div>
+        <div class="muted" id="demoTimer">30s</div>
+      </div>
+    </div>
+
+    <hr/>
+    <h3>Eigenen Account testen</h3>
+    <div class="row" style="margin-bottom:8px">
+      <input id="name" placeholder="Account-Name (z. B. GitHub)" />
+      <input id="secret" placeholder="Base32-Secret (z. B. JBSWY3...)" />
+      <button id="show">Code anzeigen</button>
+    </div>
+
+    <div id="ownBox" style="margin-top:6px"></div>
+
+    <hr/>
+    <h3>Optional: Vault lokal verschlüsseln</h3>
+    <p class="muted">Wenn Besucher ihre Accounts speichern wollen, müssen sie ein Master‑Passwort wählen. Dieses Passwort bleibt im Browser und wird nicht hochgeladen.</p>
+    <div class="row">
+      <input id="master" type="password" placeholder="Master-Passwort (nur lokal)" />
+      <button id="saveLocal">Verschlüsselt speichern (localStorage)</button>
+      <button id="clearLocal">Löschen</button>
+    </div>
+    <p id="status" class="muted"></p>
+  </div>
+
+<script>
+/* Minimal Base32 Decoder + TOTP (HMAC-SHA1 via WebCrypto).
+   - Demo secret: JBSWY3DPEHPK3PXP  (ist ein typischer testwert)
+   - Diese Datei ist client-only: nichts wird an Server geschickt.
+*/
+
+const STEP = 30;
+const DIGITS = 6;
+
+// Demo secret (öffentlich, nur für Test)
+const DEMO_SECRET = 'JBSWY3DPEHPK3PXP';
+
+// --- Base32 decode ---
+function base32toBytes(base32) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  base32 = (base32 || '').toUpperCase().replace(/=+$/,'').replace(/[^A-Z2-7]/g,'');
+  let bits = '';
+  for (let i=0;i<base32.length;i++){
+    bits += alphabet.indexOf(base32[i]).toString(2).padStart(5,'0');
+  }
+  const bytes = [];
+  for (let i=0;i+8<=bits.length;i+=8) bytes.push(parseInt(bits.slice(i,i+8),2));
+  return new Uint8Array(bytes);
+}
+
+// HOTP using WebCrypto HMAC-SHA1
+async function hotp(keyBytes, counter) {
+  const key = await crypto.subtle.importKey('raw', keyBytes, {name:'HMAC', hash:'SHA-1'}, false, ['sign']);
+  const buf = new ArrayBuffer(8), view = new DataView(buf);
+  view.setUint32(0, Math.floor(counter / 0x100000000), false);
+  view.setUint32(4, counter >>> 0, false);
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, buf));
+  const offset = sig[sig.length - 1] & 0xf;
+  const code = (((sig[offset] & 0x7f) << 24) |
+                ((sig[offset+1] & 0xff) << 16) |
+                ((sig[offset+2] & 0xff) << 8) |
+                (sig[offset+3] & 0xff)) >>> 0;
+  return code;
+}
+
+async function totpFromBase32(secret) {
+  const kb = base32toBytes(secret);
+  const counter = Math.floor(Date.now()/1000 / STEP);
+  const n = await hotp(kb, counter);
+  const otp = (n % (10**DIGITS)).toString().padStart(DIGITS,'0');
+  const secondsLeft = STEP - (Math.floor(Date.now()/1000) % STEP);
+  return {otp, secondsLeft};
+}
+
+// Render demo account continuously
+async function updateDemo() {
+  try {
+    const {otp, secondsLeft} = await totpFromBase32(DEMO_SECRET);
+    document.getElementById('demoCode').textContent = otp;
+    document.getElementById('demoTimer').textContent = secondsLeft + 's';
+    const pct = (secondsLeft / STEP) * 100;
+    const bar = document.getElementById('demoBar');
+    bar.style.width = pct + '%';
+    // Regenbogen-Farbverlauf (simple)
+    bar.style.background = `linear-gradient(90deg, hsl(${Math.round(pct*1.2)},80%,60%), hsl(${Math.round(120 - pct*1.2)},80%,60%))`;
+  } catch(e){
+    document.getElementById('demoCode').textContent = 'ERR';
+  }
+}
+
+// Show custom account on demand
+document.getElementById('show').addEventListener('click', async ()=>{
+  const s = document.getElementById('secret').value.trim();
+  const n = (document.getElementById('name').value || 'Custom').trim();
+  if (!s) { alert('Bitte ein Base32-Secret eingeben.'); return; }
+  try {
+    const {otp, secondsLeft} = await totpFromBase32(s);
+    document.getElementById('ownBox').innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><strong>${escapeHtml(n)}</strong><div style="font-family:monospace;font-size:22px">${otp}</div></div>
+        <div style="min-width:140px">
+          <div class="progress" style="margin-bottom:6px"><div class="bar" style="width:${(secondsLeft/STEP*100)}%;background:linear-gradient(90deg,#7dd3fc,#ff7b7b)"></div></div>
+          <div class="muted">${secondsLeft}s</div>
+        </div>
+      </div>
+    `;
+  } catch(e){
+    alert('Fehler beim Berechnen. Prüfe das Secret.');
+  }
+});
+
+// Simple HTML-escape (safety for displayed names)
+function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Local encrypted save (simple AES-GCM with PBKDF2)
+// Note: For demo we do a lightweight local encryption; production: use stronger KDF/Argon2 etc.
+async function deriveKey(pass, salt) {
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:120000,hash:'SHA-256'}, base, {name:'AES-GCM',length:256}, false, ['encrypt','decrypt']);
+}
+
+async function saveLocalVault(vaultObj, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(password, salt);
+  const plain = new TextEncoder().encode(JSON.stringify(vaultObj));
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv}, key, plain));
+  // store salt|iv|cipher as base64
+  const out = btoa(String.fromCharCode(...salt, ...iv, ...cipher));
+  localStorage.setItem('totp_vault', out);
+  document.getElementById('status').textContent = 'Vault gespeichert (lokal, verschlüsselt).';
+}
+
+async function loadLocalVault(password) {
+  const b = localStorage.getItem('totp_vault'); if(!b) return null;
+  const raw = Uint8Array.from(atob(b), c=>c.charCodeAt(0));
+  const salt = raw.slice(0,16), iv = raw.slice(16,28), cipher = raw.slice(28);
+  const key = await deriveKey(password, salt);
+  try{
+    const plain = await crypto.subtle.decrypt({name:'AES-GCM',iv}, key, cipher);
+    return JSON.parse(new TextDecoder().decode(plain));
+  }catch(e){ throw new Error('Entschlüsselung fehlgeschlagen'); }
+}
+
+document.getElementById('saveLocal').addEventListener('click', async ()=>{
+  const pw = document.getElementById('master').value;
+  if (!pw) { alert('Bitte Master-Passwort angeben.'); return; }
+  // For demo: we only save the last custom account the visitor entered
+  const nm = document.getElementById('name').value || 'Demo-saved';
+  const sec = document.getElementById('secret').value || DEMO_SECRET;
+  await saveLocalVault([{name:nm, secret:sec}], pw);
+});
+
+document.getElementById('clearLocal').addEventListener('click', ()=>{
+  localStorage.removeItem('totp_vault');
+  document.getElementById('status').textContent = 'Lokaler Vault gelöscht.';
+});
+
+// Update loop for demo account
+updateDemo();
+setInterval(updateDemo, 1000);
+
+</script>
+</body>
+</html>
