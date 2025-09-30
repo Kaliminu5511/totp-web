@@ -1,114 +1,143 @@
-<!doctype html> 
-<html lang="de"> 
-<head> 
-  <meta charset="utf-8" /> 
-  <meta name="viewport" content="width=device-width,initial-scale=1" /> 
-  <title>TOTP Web — Client-side</title> 
-  <link rel="stylesheet" href="style.css" /> 
-  <style>
-    /* Goldener Owner Button */
-    #ownerBtn {
-      background: linear-gradient(145deg, gold, orange);
-      border: 2px solid #b8860b;
-      color: black;
-      font-weight: bold;
-      border-radius: 8px;
-      cursor: pointer;
-      margin-left: 8px;
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TOTP Web — Client-side</title>
+<link rel="stylesheet" href="style.css">
+<style>
+/* --- Chat / Owner Styles --- */
+#ownerBtn { position: fixed; bottom: 10px; right: 10px; }
+#ownerPanel { position: fixed; bottom: 50px; right: 10px; width: 320px; max-height: 400px; background:#fff; border:1px solid #ccc; border-radius:8px; display:none; box-shadow:0 2px 10px rgba(0,0,0,0.2); }
+.chat-header { display:flex; justify-content:space-between; padding:8px; background:#eee; border-bottom:1px solid #ccc; font-weight:bold; }
+.chat-messages { padding:8px; max-height:300px; overflow-y:auto; }
+.chat-message { padding:6px 10px; margin:4px 0; border-radius:12px; background:#f1f0f0; pointer-events:none; }
+.chat-message.owner { background:gold; }
+.chat-message .title { font-weight:bold; display:block; }
+</style>
+</head>
+<body>
+
+<main id="app" class="container">
+<h1>🔐 TOTP Web (Client-Side)</h1>
+
+<section id="auth" class="card">
+<p>Master-Passwort (wird nur lokal verwendet):</p>
+<div class="row">
+<input id="pw" type="password" placeholder="Master-Passwort">
+<button id="unlock" class="primary">Entsperren / Neues Passwort</button>
+<button id="import" class="muted">Import (verschlüsselte Datei)</button>
+<input id="filein" type="file" style="display:none">
+</div>
+<p class="mutetxt">Wenn keine Daten vorhanden sind, legt Entsperren ein neues, leeres Vault an.</p>
+</section>
+
+<section id="main" class="card" style="display:none">
+<div class="controls row">
+<button id="add" class="primary">Neuen Account</button>
+<button id="export" class="muted">Export (verschlüsselt)</button>
+<button id="lock" class="danger">Sperren</button>
+</div>
+<div id="list" class="list"></div>
+<p class="mutetxt">Die verschlüsselte Sicherungsdatei wird im Browser-Storage abgelegt. <strong>Teile niemals dein Master-Passwort.</strong></p>
+</section>
+
+</main>
+
+<!-- Owner Control Button -->
+<button id="ownerBtn" class="smallbtn" title="Owner Control">🛡️ Owner</button>
+
+<!-- Owner Control Panel -->
+<aside id="ownerPanel">
+  <header class="chat-header">
+    <span>Besitzer-Kontrolle</span>
+    <button id="closeOwner">✕</button>
+  </header>
+
+  <!-- PIN Setup -->
+  <div id="ownerSetup">
+    <input id="ownerPinNew" type="password" placeholder="Neuen PIN festlegen">
+    <button id="ownerSetBtn" class="primary">PIN speichern</button>
+  </div>
+
+  <!-- PIN Login -->
+  <div id="ownerLogin" style="display:none">
+    <input id="ownerPinInput" type="password" placeholder="PIN eingeben">
+    <button id="ownerUnlock" class="primary">Entsperren</button>
+  </div>
+
+  <!-- Owner Content -->
+  <div id="ownerContent" style="display:none">
+    <div id="ownerChat" class="chat-messages"></div>
+    <button id="viewVault" class="primary">Vault anzeigen</button>
+    <button id="resetVault" class="danger">Vault zurücksetzen</button>
+  </div>
+</aside>
+
+<script src="app.js"></script>
+<script>
+// --- Owner Panel Logik ---
+const ownerBtn = document.getElementById('ownerBtn');
+const ownerPanel = document.getElementById('ownerPanel');
+const ownerSetup = document.getElementById('ownerSetup');
+const ownerLogin = document.getElementById('ownerLogin');
+const ownerContent = document.getElementById('ownerContent');
+const ownerChat = document.getElementById('ownerChat');
+const closeOwner = document.getElementById('closeOwner');
+
+ownerBtn.addEventListener('click', ()=>{
+    const storedPin = localStorage.getItem('ownerPIN');
+    if(!storedPin) {
+        ownerSetup.style.display='block';
+        ownerLogin.style.display='none';
+        ownerContent.style.display='none';
+    } else {
+        ownerSetup.style.display='none';
+        ownerLogin.style.display='block';
+        ownerContent.style.display='none';
     }
-    #ownerBtn:hover {
-      background: linear-gradient(145deg, #ffdf00, #ff8c00);
-    }
+    ownerPanel.style.display='block';
+});
+closeOwner.addEventListener('click', ()=>{ ownerPanel.style.display='none'; });
 
-    /* Overlay Panel */
-    #ownerPanel {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.6);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 9999;
-    }
-    #ownerPanel .card {
-      background: #fff;
-      padding: 1em;
-      border-radius: 10px;
-      min-width: 280px;
-    }
-    #ownerPanel .chat-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    #ownerPanel .chat-title {
-      font-size: 1.2em;
-      font-weight: bold;
-    }
-  </style>
-</head> 
-<body> 
-  <main id="app" class="container"> 
-    <h1>🔐 TOTP Web (Client-Side)</h1> 
+// PIN Setup
+document.getElementById('ownerSetBtn').addEventListener('click', ()=>{
+    const pin = document.getElementById('ownerPinNew').value;
+    if(!pin) { alert('PIN eingeben'); return; }
+    localStorage.setItem('ownerPIN', pin);
+    alert('PIN gespeichert!');
+    ownerSetup.style.display='none';
+    ownerLogin.style.display='block';
+});
 
-    <section id="auth" class="card"> 
-      <p>Master-Passwort (wird nur lokal verwendet):</p> 
-      <div class="row"> 
-        <input id="pw" type="password" placeholder="Master-Passwort" /> 
-        <button id="unlock" class="primary">Entsperren / Neues Passwort</button> 
-        <button id="import" class="muted">Import (verschlüsselte Datei)</button> 
-        <input id="filein" type="file" style="display:none" /> 
-      </div> 
-      <p class="mutetxt">Wenn keine Daten vorhanden sind, legt Entsperren ein neues, leeres Vault an.</p> 
-    </section> 
+// PIN Login
+document.getElementById('ownerUnlock').addEventListener('click', ()=>{
+    const input = document.getElementById('ownerPinInput').value;
+    const stored = localStorage.getItem('ownerPIN');
+    if(input===stored){
+        ownerLogin.style.display='none';
+        ownerContent.style.display='block';
+        renderOwnerVault();
+    } else alert('Falscher PIN!');
+});
 
-    <section id="main" class="card" style="display:none"> 
-      <div class="controls row"> 
-        <button id="add" class="primary">Neuen Account</button> 
-        <button id="export" class="muted">Export (verschlüsselt)</button> 
-        <button id="lock" class="danger">Sperren</button> 
-        <button id="ownerBtn" title="Owner Control">🛡️ Owner</button>
-      </div> 
-      <div id="list" class="list"></div> 
-      <p class="mutetxt">Die verschlüsselte Sicherungsdatei wird im Browser-Storage abgelegt. <strong>Teile niemals dein Master-Passwort.</strong></p> 
-    </section> 
+// Vault im Owner Chat anzeigen
+function renderOwnerVault(){
+    ownerChat.innerHTML='';
+    vault.forEach(async (acc)=>{
+        const {otp, secondsLeft} = await totpFromBase32(acc.secret);
+        const div = document.createElement('div');
+        div.className='chat-message owner';
+        div.innerHTML=`<span class="title">${acc.name}</span><span class="code">${otp}</span> <span class="muted">${secondsLeft}s</span>`;
+        ownerChat.appendChild(div);
+    });
+    ownerChat.scrollTop = ownerChat.scrollHeight;
+}
 
-    <footer class="card small"> 
-      <p>Open Source — client-side only. Host via GitHub Pages / Netlify / Vercel mit HTTPS.</p> 
-    </footer> 
-  </main> 
-
-  <!-- Owner Control Panel -->
-  <aside id="ownerPanel" style="display:none">
-    <div class="card">
-      <header class="chat-header">
-        <div class="chat-title">Besitzer-Kontrolle</div>
-        <button id="closeOwner" class="smallbtn">✕</button>
-      </header>
-
-      <!-- PIN Setup (nur sichtbar wenn noch kein PIN gespeichert) -->
-      <div id="ownerSetup" style="display:none">
-        <input id="ownerPinNew" type="password" placeholder="Neuen PIN festlegen">
-        <button id="ownerSetBtn" class="primary">PIN speichern</button>
-      </div>
-
-      <!-- PIN Login -->
-      <div id="ownerLogin" style="display:none">
-        <input id="ownerPinInput" type="password" placeholder="PIN eingeben">
-        <button id="ownerUnlock" class="primary">Entsperren</button>
-      </div>
-
-      <!-- Owner Content -->
-      <div id="ownerContent" style="display:none">
-        <p><strong>⚠️ Besitzerrechte aktiv!</strong></p>
-        <button id="viewVault" class="primary">Verschlüsselte Daten anzeigen</button>
-        <button id="resetVault" class="danger">Vault zurücksetzen</button>
-      </div>
-    </div>
-  </aside>
-
-  <script src="app.js"></script> 
-  <script src="owner.js"></script> 
-</body> 
+// Reset Vault
+document.getElementById('resetVault').addEventListener('click', ()=>{
+    if(confirm('Vault wirklich zurücksetzen?')){ vault=[]; localStorage.removeItem('totp_vault'); renderOwnerVault(); }
+});
+</script>
+</body>
 </html>
