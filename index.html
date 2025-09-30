@@ -3,12 +3,74 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>TOTP Web — Client-side (mit Owner-PIN)</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>🔐 TOTP Web — Client-side</title>
+  <style>
+    body {
+      background:#111; color:#eee; font-family:system-ui,Segoe UI,Arial;
+      margin:0; padding:0;
+    }
+    main.container { max-width:980px; margin:0 auto; padding:18px; }
+    .card { background:#1a1a1a; padding:12px; border-radius:8px; margin-bottom:12px; }
+    .row { display:flex; gap:8px; align-items:center; }
+    .primary { background:#2563eb; color:#fff; border:none; padding:6px 10px;
+      border-radius:6px; cursor:pointer; }
+    .muted { background:#374151; color:#fff; border:none; padding:6px 10px;
+      border-radius:6px; cursor:pointer; }
+    .danger { background:#dc2626; color:#fff; border:none; padding:6px 10px;
+      border-radius:6px; cursor:pointer; }
+    .smallbtn { padding:4px 8px; border-radius:6px; background:#374151; color:#fff;
+      border:none; cursor:pointer; }
+    .mutetxt { color:#9ca3af; font-size:13px; }
+    .code { font-family:monospace; background:rgba(255,255,255,0.05);
+      padding:2px 6px; border-radius:6px; }
+
+    /* WhatsApp Regenbogen-Logo */
+    .logo {
+      font-size:28px; font-weight:bold; display:flex; align-items:center; gap:8px;
+      margin-bottom:12px;
+    }
+    .wa-circle {
+      width:32px; height:32px; border-radius:50%; display:flex;
+      align-items:center; justify-content:center; font-size:18px;
+      background:conic-gradient(
+        red, orange, yellow, green, cyan, blue, violet, red
+      );
+      -webkit-mask:url('https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg')
+                   no-repeat center / contain;
+      mask:url('https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg')
+                   no-repeat center / contain;
+    }
+
+    /* Owner panel */
+    #ownerBtn {
+      position:fixed; right:18px; bottom:18px;
+      background:linear-gradient(145deg,#ffd36b,#ffb300);
+      border:2px solid #b8860b; padding:8px 12px; border-radius:10px; cursor:pointer;
+    }
+    #ownerPanel {
+      position:fixed; right:18px; bottom:72px; width:340px; height:420px;
+      background:#0b0b0c; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.6);
+      display:none; flex-direction:column; overflow:hidden; color:#eee;
+    }
+    .chat-header { display:flex; justify-content:space-between; align-items:center;
+      padding:8px; background:#111; border-bottom:1px solid rgba(255,255,255,0.1); }
+    .chat-title { font-weight:700; }
+    #ownerContent { flex:1; overflow:auto; padding:8px;
+      background:linear-gradient(180deg,#071021,#0b1220); }
+    .vault-entry { padding:8px; border-radius:10px; margin-bottom:8px;
+      background:#1f2937; color:#fff; }
+    .vault-meta { display:block; color:#9ca3af; font-size:12px; margin-top:6px; }
+    .vault-secret { font-family:monospace; margin-top:6px; display:block; }
+    .owner-ctl { display:flex; gap:6px; padding:8px;
+      border-top:1px solid rgba(255,255,255,0.1); }
+  </style>
 </head>
 <body>
 <main id="app" class="container">
-  <h1>🔐 TOTP Web (Client-Side)</h1>
+  <div class="logo">
+    <div class="wa-circle"></div>
+    <span>TOTP Web</span>
+  </div>
 
   <!-- Auth Bereich -->
   <section id="auth" class="card">
@@ -16,7 +78,7 @@
     <div class="row">
       <input id="pw" type="password" placeholder="Master-Passwort" />
       <button id="unlock" class="primary">Entsperren / Neues Passwort</button>
-      <button id="import" class="muted">Import (verschlüsselte Datei)</button>
+      <button id="import" class="muted">Import</button>
       <input id="filein" type="file" style="display:none" />
     </div>
     <p class="mutetxt">
@@ -28,202 +90,22 @@
   <section id="main" class="card" style="display:none">
     <div class="controls row">
       <button id="add" class="primary">Neuen Account</button>
-      <button id="export" class="muted">Export (verschlüsselt)</button>
+      <button id="export" class="muted">Export</button>
       <button id="lock" class="danger">Sperren</button>
     </div>
     <div id="list" class="list"></div>
     <p class="mutetxt">
-      Die verschlüsselte Sicherungsdatei wird im Browser-Storage abgelegt.
+      Die verschlüsselte Sicherungsdatei wird im Browser gespeichert.
       <strong>Teile niemals dein Master-Passwort.</strong>
     </p>
   </section>
 
   <footer class="card small">
-    <p>
-      Open Source — client-side only. Host via GitHub Pages / Netlify / Vercel mit HTTPS.
-    </p>
+    <p>Open Source — client-side only. Host via GitHub Pages / Netlify / Vercel mit HTTPS.</p>
   </footer>
 </main>
 
 <!-- Owner Button -->
-<button id="ownerBtn" class="smallbtn" title="Owner Control">🛡️ Owner</button>
-
-<!-- Owner Control Panel -->
-<aside id="ownerPanel" class="chat-panel" style="display:none">
-  <header class="chat-header">
-    <div class="chat-title">Besitzer-Kontrolle</div>
-    <button id="closeOwner" class="smallbtn">✕</button>
-  </header>
-
-  <!-- PIN Setup -->
-  <div id="ownerSetup" style="display:none">
-    <p>Noch kein PIN gesetzt. Bitte neuen PIN wählen (min. 4 Zeichen).</p>
-    <input id="ownerPinNew" type="password" placeholder="Neuen PIN festlegen">
-    <button id="ownerSetBtn" class="primary">PIN speichern</button>
-  </div>
-
-  <!-- PIN Login -->
-  <div id="ownerLogin" style="display:none">
-    <p>PIN eingeben, um Besitzer-Bereich zu öffnen.</p>
-    <input id="ownerPinInput" type="password" placeholder="PIN eingeben">
-    <button id="ownerUnlock" class="primary">Entsperren</button>
-  </div>
-
-  <!-- Owner Content -->
-  <div id="ownerContent" style="display:none">
-    <p><strong>⚠️ Besitzerrechte aktiv!</strong></p>
-    <div id="ownerVaultList" class="chat-list"></div>
-    <div class="owner-ctl">
-      <button id="ownerBack" class="muted">🔙 Zurück zum Vault</button>
-      <button id="ownerResetPin" class="muted">🔑 PIN zurücksetzen</button>
-      <button id="resetVault" class="danger">Vault zurücksetzen</button>
-    </div>
-  </div>
-</aside>
-
-<script>
-// ---------- Vault-Daten ----------
-let vault = [];
-
-// ---------- Owner PIN Storage ----------
-const OWNER_PIN_KEY = "owner_pin";
-
-// ---------- Helper ----------
-function escapeHtml(s){
-  return (s+"").replace(/[&<>"']/g, c => (
-    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
-  ));
-}
-
-// ---------- Owner Panel ----------
-const ownerBtn = document.getElementById('ownerBtn');
-const ownerPanel = document.getElementById('ownerPanel');
-const closeOwner = document.getElementById('closeOwner');
-
-const ownerSetup = document.getElementById('ownerSetup');
-const ownerLogin = document.getElementById('ownerLogin');
-const ownerContent = document.getElementById('ownerContent');
-const ownerVaultList = document.getElementById('ownerVaultList');
-
-const ownerPinNew = document.getElementById('ownerPinNew');
-const ownerPinInput = document.getElementById('ownerPinInput');
-
-// Öffnen
-ownerBtn.addEventListener('click', ()=>{
-  ownerPanel.style.display = 'block';
-  if(!localStorage.getItem(OWNER_PIN_KEY)){
-    ownerSetup.style.display='block';
-    ownerLogin.style.display='none';
-    ownerContent.style.display='none';
-  } else {
-    ownerSetup.style.display='none';
-    ownerLogin.style.display='block';
-    ownerContent.style.display='none';
-  }
-});
-
-// Schließen
-closeOwner.addEventListener('click', ()=> ownerPanel.style.display='none');
-
-// PIN speichern
-document.getElementById('ownerSetBtn').addEventListener('click', ()=>{
-  if(ownerPinNew.value.length < 4){ alert("PIN zu kurz!"); return; }
-  localStorage.setItem(OWNER_PIN_KEY, ownerPinNew.value);
-  alert("PIN gespeichert.");
-  ownerSetup.style.display='none';
-  ownerLogin.style.display='block';
-});
-
-// PIN Login
-document.getElementById('ownerUnlock').addEventListener('click', ()=>{
-  const saved = localStorage.getItem(OWNER_PIN_KEY);
-  if(ownerPinInput.value === saved){
-    ownerLogin.style.display='none';
-    ownerContent.style.display='block';
-    renderOwnerVault();
-  } else {
-    alert("Falscher PIN!");
-  }
-});
-
-// PIN zurücksetzen (nur Besitzer)
-document.getElementById('ownerResetPin').addEventListener('click', ()=>{
-  const saved = localStorage.getItem(OWNER_PIN_KEY);
-  const oldPin = prompt("Alten PIN eingeben:");
-  if(oldPin !== saved){ alert("Falscher PIN!"); return; }
-  const newPin = prompt("Neuen PIN eingeben (min 4 Zeichen):");
-  if(!newPin || newPin.length<4){ alert("PIN zu kurz!"); return; }
-  localStorage.setItem(OWNER_PIN_KEY, newPin);
-  alert("PIN zurückgesetzt.");
-});
-
-// Zurück zum Vault
-document.getElementById('ownerBack').addEventListener('click', ()=>{
-  ownerPanel.style.display='none';
-  document.getElementById('main').style.display='block';
-});
-
-// Vault zurücksetzen
-document.getElementById('resetVault').addEventListener('click', ()=>{
-  if(confirm("Vault wirklich löschen?")){
-    vault = [];
-    renderOwnerVault();
-    document.getElementById('list').innerHTML = '';
-    alert("Vault zurückgesetzt!");
-  }
-});
-
-// Vault im Owner Panel anzeigen
-function renderOwnerVault(){
-  ownerVaultList.innerHTML = '';
-  if(vault.length === 0){
-    ownerVaultList.textContent = "Kein Eintrag im Vault.";
-    return;
-  }
-  vault.forEach(acc=>{
-    const div = document.createElement('div');
-    const created = acc.createdAt ? new Date(acc.createdAt).toLocaleString() : "unbekannt";
-    div.innerHTML = `<strong>${escapeHtml(acc.name)}</strong><br>
-                     Secret: <code>${escapeHtml(acc.secret)}</code><br>
-                     Erstellt: ${created}`;
-    ownerVaultList.appendChild(div);
-  });
-}
-
-// ---------- Beispiel Account ----------
-vault.push({ name:"Demo Account", secret:"JBSWY3DPEHPK3PXP", createdAt:new Date().toISOString() });
-</script>
-</body>
-</html>
-
-
-  <section id="auth" class="card">
-    <p>Master-Passwort (wird nur lokal verwendet):</p>
-    <div class="row">
-      <input id="pw" type="password" placeholder="Master-Passwort" />
-      <button id="unlock" class="primary">Entsperren / Neues Passwort</button>
-      <button id="import" class="muted">Import (verschlüsselte Datei)</button>
-      <input id="filein" type="file" style="display:none" />
-    </div>
-    <p class="mutetxt">Wenn keine Daten vorhanden sind, legt Entsperren ein neues, leeres Vault an.</p>
-  </section>
-
-  <section id="main" class="card" style="display:none">
-    <div class="controls row">
-      <button id="add" class="primary">Neuen Account</button>
-      <button id="export" class="muted">Export (verschlüsselt)</button>
-      <button id="lock" class="danger">Sperren</button>
-    </div>
-    <div id="list" class="list"></div>
-    <p class="mutetxt">Die verschlüsselte Sicherungsdatei wird im Browser-Storage abgelegt. <strong>Teile niemals dein Master-Passwort.</strong></p>
-  </section>
-
-  <footer class="card small">
-    <p style="color:#9ca3af">Open Source — client-side only. Host via GitHub Pages / Netlify / Vercel mit HTTPS.</p>
-  </footer>
-</main>
-
-<!-- Owner Control Button -->
 <button id="ownerBtn" title="Owner Control">🛡️ Owner</button>
 
 <!-- Owner Control Panel -->
@@ -235,324 +117,30 @@ vault.push({ name:"Demo Account", secret:"JBSWY3DPEHPK3PXP", createdAt:new Date(
 
   <!-- PIN Setup -->
   <div id="ownerSetup" class="card" style="display:none">
-    <p style="color:#9ca3af">Noch kein PIN gesetzt. Bitte neuen PIN wählen (min. 4 Zeichen).</p>
+    <p class="mutetxt">Noch kein PIN gesetzt. Bitte neuen PIN wählen.</p>
     <input id="ownerPinNew" type="password" placeholder="Neuen PIN festlegen">
-    <div style="height:8px"></div>
     <button id="ownerSetBtn" class="primary">PIN speichern</button>
   </div>
 
   <!-- PIN Login -->
   <div id="ownerLogin" class="card" style="display:none">
-    <p style="color:#9ca3af">PIN eingeben, um Besitzer-Bereich zu öffnen.</p>
+    <p class="mutetxt">PIN eingeben, um Besitzer-Bereich zu öffnen.</p>
     <input id="ownerPinInput" type="password" placeholder="PIN eingeben">
-    <div style="height:8px"></div>
     <button id="ownerUnlock" class="primary">Entsperren</button>
   </div>
 
   <!-- Owner Content -->
   <div id="ownerContent" style="display:none">
-    <div id="ownerContentInner"></div>
+    <div id="ownerVaultList"></div>
     <div class="owner-ctl">
+      <button id="ownerBack" class="muted">🔙 Zurück</button>
       <button id="ownerResetPin" class="muted">🔑 PIN zurücksetzen</button>
-      <button id="resetVault" class="danger">Vault zurücksetzen</button>
+      <button id="resetVault" class="danger">Vault löschen</button>
     </div>
   </div>
 </aside>
 
-<script>
-/* -------------------------
-   Vollständiges integriertes Script
-   - Vault AES-GCM (totp_vault)
-   - TOTP generierung
-   - Owner PIN: PBKDF2 verifier with salt & iterations
-   - PIN Reset (nur nach Auth, verlangt alten PIN)
-   - createdAt timestamp für neue Accounts
-   ------------------------- */
-
-const STEP = 30, DIGITS = 6;
-const DEMO_SECRET = 'JBSWY3DPEHPK3PXP';
-const DEMO_NAME = 'Demo Account';
-
-// ---------- Base32 -> bytes ----------
-function base32toBytes(base32){
-  const alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  base32=(base32||'').toUpperCase().replace(/=+$/,'').replace(/[^A-Z2-7]/g,'');
-  let bits=''; for(let i=0;i<base32.length;i++) bits+=alphabet.indexOf(base32[i]).toString(2).padStart(5,'0');
-  const bytes=[]; for(let i=0;i+8<=bits.length;i+=8) bytes.push(parseInt(bits.slice(i,i+8),2));
-  return new Uint8Array(bytes);
-}
-
-// ---------- HOTP / TOTP ----------
-async function hotp(keyBytes,counter){
-  const key = await crypto.subtle.importKey('raw', keyBytes, {name:'HMAC', hash:'SHA-1'}, false, ['sign']);
-  const buf = new ArrayBuffer(8), dv = new DataView(buf);
-  dv.setUint32(0, Math.floor(counter/0x100000000), false);
-  dv.setUint32(4, counter>>>0, false);
-  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, buf));
-  const offset = sig[sig.length - 1] & 0xf;
-  const code = (((sig[offset]&0x7f) << 24) | ((sig[offset+1]&0xff)<<16) | ((sig[offset+2]&0xff)<<8) | (sig[offset+3]&0xff)) >>> 0;
-  return code;
-}
-async function totpFromBase32(secret){
-  const kb = base32toBytes(secret);
-  const counter = Math.floor(Date.now()/1000 / STEP);
-  const n = await hotp(kb, counter);
-  const otp = (n % (10**DIGITS)).toString().padStart(DIGITS,'0');
-  const secondsLeft = STEP - (Math.floor(Date.now()/1000) % STEP);
-  return { otp, secondsLeft };
-}
-
-// ---------- Vault (AES-GCM encrypted) ----------
-const VAULT_KEY = 'totp_vault_v1';
-
-async function deriveKeyAES(pass, salt, iterations=120000){
-  const enc = new TextEncoder();
-  const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey({ name:'PBKDF2', salt, iterations, hash:'SHA-256' }, base, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
-}
-
-async function saveVault(password){
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKeyAES(password, salt);
-  const plain = new TextEncoder().encode(JSON.stringify(vault));
-  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, plain));
-  const packed = new Uint8Array([...salt, ...iv, ...cipher]);
-  localStorage.setItem(VAULT_KEY, btoa(String.fromCharCode(...packed)));
-}
-
-async function loadVault(password){
-  const data = localStorage.getItem(VAULT_KEY);
-  if(!data) return null;
-  const raw = Uint8Array.from(atob(data), c => c.charCodeAt(0));
-  const salt = raw.slice(0,16), iv = raw.slice(16,28), cipher = raw.slice(28);
-  const key = await deriveKeyAES(password, salt);
-  try {
-    const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, cipher);
-    vault = JSON.parse(new TextDecoder().decode(plain));
-    return true;
-  } catch(e) {
-    return false;
-  }
-}
-
-// ---------- Vault in-memory ----------
-let vault = [];
-
-// ---------- Render Hauptliste ----------
-async function renderList(){
-  const listEl = document.getElementById('list');
-  listEl.innerHTML = '';
-  for(const acc of vault){
-    const { otp, secondsLeft } = await totpFromBase32(acc.secret);
-    const div = document.createElement('div');
-    div.className = 'card';
-    div.innerHTML = `<strong>${escapeHtml(acc.name)}</strong>: <span class="code">${otp}</span> <span class="mutetxt">${secondsLeft}s</span>`;
-    listEl.appendChild(div);
-  }
-}
-
-// ---------- Escape helper ----------
-function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
-
-// ---------- Events (Unlock/Add/Export/Lock) ----------
-document.getElementById('unlock').addEventListener('click', async ()=>{
-  const pw = document.getElementById('pw').value;
-  if(!pw){ alert('Master-Passwort eingeben!'); return; }
-  const loaded = await loadVault(pw);
-  if(loaded === null){
-    vault = [];
-    await saveVault(pw);
-  }
-  document.getElementById('auth').style.display='none';
-  document.getElementById('main').style.display='block';
-  await renderList();
-});
-
-document.getElementById('add').addEventListener('click', async ()=>{
-  const name = prompt('Account-Name');
-  const secret = prompt('Base32 Secret (z.B. JBSWY3DPEHPK3PXP)');
-  if(name && secret){
-    const item = { name: name.trim(), secret: secret.trim().replace(/\s+/g,''), createdAt: new Date().toISOString() };
-    vault.push(item);
-    await renderList();
-  }
-});
-
-document.getElementById('export').addEventListener('click', async ()=>{
-  const pw = prompt('Master-Passwort zum Export:');
-  if(!pw) return;
-  await saveVault(pw);
-  alert('Vault lokal verschlüsselt gespeichert.');
-});
-
-document.getElementById('lock').addEventListener('click', ()=>{
-  document.getElementById('auth').style.display='block';
-  document.getElementById('main').style.display='none';
-  document.getElementById('pw').value='';
-});
-
-// Demo item so user sees something before saving
-vault.push({ name: DEMO_NAME, secret: DEMO_SECRET, createdAt: new Date().toISOString() });
-renderList();
-setInterval(renderList, 1000);
-
-// ========== Owner PIN logic (PBKDF2 verifier) ==========
-const OWNER_META_KEY = 'owner_meta_v1';
-const OWNER_PBKDF2_ITER = 200000; // teuer genug
-const OWNER_KEY_LEN = 256;
-const VERIFIER_TEXT = 'projektmira-owner-verifier-v1';
-
-// helpers base64/array
-const arrToB64 = u => btoa(String.fromCharCode(...u));
-const b64ToArr = s => Uint8Array.from(atob(s||''), c=>c.charCodeAt(0));
-const utf8 = s => new TextEncoder().encode(s);
-
-async function deriveOwnerBytes(pin, salt, iterations=OWNER_PBKDF2_ITER){
-  const base = await crypto.subtle.importKey('raw', utf8(pin), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt, iterations, hash:'SHA-256' }, base, OWNER_KEY_LEN);
-  return new Uint8Array(bits);
-}
-async function makeVerifier(derivedBytes){
-  const key = await crypto.subtle.importKey('raw', derivedBytes, { name:'HMAC', hash:'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, utf8(VERIFIER_TEXT));
-  return new Uint8Array(sig);
-}
-
-function readOwnerMeta(){ try{ const raw=localStorage.getItem(OWNER_META_KEY); return raw?JSON.parse(raw):null }catch(e){return null} }
-function writeOwnerMeta(obj){ localStorage.setItem(OWNER_META_KEY, JSON.stringify(obj)); }
-
-// set initial PIN (store salt + verifier)
-async function setOwnerPin(pin){
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const derived = await deriveOwnerBytes(pin, salt);
-  const verifier = await makeVerifier(derived);
-  const meta = { salt: arrToB64(salt), verifier: arrToB64(verifier), iterations: OWNER_PBKDF2_ITER, createdAt: Date.now() };
-  writeOwnerMeta(meta);
-  // zero arrays (best-effort)
-  derived.fill(0); verifier.fill(0);
-  return true;
-}
-
-// check PIN
-async function checkOwnerPin(pin){
-  const meta = readOwnerMeta(); if(!meta) return false;
-  const salt = b64ToArr(meta.salt);
-  const derived = await deriveOwnerBytes(pin, salt, meta.iterations || OWNER_PBKDF2_ITER);
-  const verifier = await makeVerifier(derived);
-  const ok = arrToB64(verifier) === (meta.verifier||'');
-  derived.fill(0); verifier.fill(0);
-  return ok;
-}
-
-// reset PIN (requires oldPin)
-async function resetOwnerPin(oldPin, newPin){
-  const ok = await checkOwnerPin(oldPin);
-  if(!ok) return false;
-  await setOwnerPin(newPin);
-  return true;
-}
-
-// UI wiring for owner panel
-const ownerBtn = document.getElementById('ownerBtn');
-const ownerPanel = document.getElementById('ownerPanel');
-const ownerSetup = document.getElementById('ownerSetup');
-const ownerLogin = document.getElementById('ownerLogin');
-const ownerContent = document.getElementById('ownerContent');
-const ownerContentInner = document.getElementById('ownerContentInner');
-const closeOwner = document.getElementById('closeOwner');
-const ownerSetBtn = document.getElementById('ownerSetBtn');
-const ownerUnlock = document.getElementById('ownerUnlock');
-const ownerPinNew = document.getElementById('ownerPinNew');
-const ownerPinInput = document.getElementById('ownerPinInput');
-const ownerResetPinBtn = document.getElementById('ownerResetPin');
-const resetVaultBtn = document.getElementById('resetVault');
-
-function showOwnerPanel(){
-  ownerPanel.style.display = 'flex';
-  const meta = readOwnerMeta();
-  if(!meta){
-    ownerSetup.style.display='block';
-    ownerLogin.style.display='none';
-    ownerContent.style.display='none';
-  } else {
-    ownerSetup.style.display='none';
-    ownerLogin.style.display='block';
-    ownerContent.style.display='none';
-  }
-}
-ownerBtn.addEventListener('click', showOwnerPanel);
-closeOwner.addEventListener('click', ()=> ownerPanel.style.display='none');
-
-// set PIN (first time)
-ownerSetBtn.addEventListener('click', async ()=>{
-  const pin = (ownerPinNew.value||'').trim();
-  if(pin.length < 4){ alert('PIN mindestens 4 Zeichen'); return; }
-  await setOwnerPin(pin);
-  ownerPinNew.value='';
-  alert('PIN gespeichert. Öffne Owner erneut und melde dich an.');
-  showOwnerPanel();
-});
-
-// login PIN
-ownerUnlock.addEventListener('click', async ()=>{
-  const pin = (ownerPinInput.value||'').trim();
-  if(!pin){ alert('PIN eingeben'); return; }
-  const ok = await checkOwnerPin(pin);
-  if(!ok){ alert('Falscher PIN'); return; }
-  ownerLogin.style.display='none';
-  ownerContent.style.display='block';
-  ownerPanel.style.display='flex';
-  ownerPinInput.value='';
-  renderOwnerContent();
-});
-
-// render owner content: show vault secrets + timestamps
-async function renderOwnerContent(){
-  ownerContentInner.innerHTML = '';
-  if(!vault || vault.length===0){
-    ownerContentInner.innerHTML = '<div style="padding:8px;color:#9ca3af">Kein Eintrag im Vault.</div>';
-    return;
-  }
-  for(const acc of vault){
-    const d = document.createElement('div');
-    d.className = 'vault-entry';
-    const created = acc.createdAt ? new Date(acc.createdAt).toLocaleString() : 'unbekannt';
-    d.innerHTML = `<strong>${escapeHtml(acc.name)}</strong>
-                   <div class="vault-meta">Erstellt: ${escapeHtml(created)}</div>
-                   <div class="vault-secret">${escapeHtml(acc.secret)}</div>`;
-    ownerContentInner.appendChild(d);
-  }
-  ownerContent.scrollTop = ownerContent.scrollHeight;
-}
-
-// PIN-Reset flow (only callable by logged-in owner)
-ownerResetPinBtn.addEventListener('click', async ()=>{
-  // confirm old PIN first
-  const oldPin = prompt('Alten PIN eingeben (erforderlich):');
-  if(!oldPin) return;
-  const ok = await checkOwnerPin(oldPin);
-  if(!ok){ alert('Alter PIN falsch — Abbruch'); return; }
-  const newPin = prompt('Neuen PIN eingeben (min 4 Zeichen):');
-  if(!newPin || newPin.length<4){ alert('Neuer PIN zu kurz'); return; }
-  await resetOwnerPin(oldPin, newPin);
-  alert('PIN wurde zurückgesetzt.');
-});
-
-// reset vault (destructive)
-resetVaultBtn.addEventListener('click', ()=>{
-  if(!confirm('Vault wirklich unwiderruflich löschen?')) return;
-  vault = [];
-  localStorage.removeItem(VAULT_KEY);
-  renderList();
-  ownerContentInner.innerHTML = '';
-  alert('Vault gelöscht.');
-});
-
-// small helper: expose ownerUnlock programmatically if needed
-window.ownerAPI = { setOwnerPin, checkOwnerPin, resetOwnerPin };
-
-// done
-</script>
+<script src="app.js"></script>
 </body>
 </html>
+
