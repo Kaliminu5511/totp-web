@@ -126,3 +126,31 @@ renderList();
 
 // --- Auto-Update alle 1 Sekunde ---
 setInterval(renderList,1000);
+
+// app.js – hinzufügen am Ende
+window.ownerViewVault = async function(){
+    try {
+        // Dein verschlüsselter Vault aus localStorage
+        const encryptedVault = localStorage.getItem('vault'); // je nachdem, wie du es nennst
+        if(!encryptedVault){
+            alert('Kein Vault gefunden.');
+            return;
+        }
+
+        // Master-Passwort wird aus Input geholt (oder bereits entschlüsselt im Unlock-Prozess)
+        const masterPw = document.getElementById('pw').value;
+        if(!masterPw){
+            alert('Bitte Master-Passwort im Hauptfeld eingeben.');
+            return;
+        }
+
+        // Beispiel: einfache Entschlüsselung (AES-GCM)
+        // Du musst hier deinen eigenen Entschlüsselungs-Code aus app.js verwenden
+        const decryptedVault = await decryptVault(encryptedVault, masterPw); // deine Funktion
+        alert('Vault-Inhalt:\n' + JSON.stringify(decryptedVault, null, 2));
+    } catch(e){
+        console.error(e);
+        alert('Fehler beim Anzeigen des Vaults');
+    }
+}
+
