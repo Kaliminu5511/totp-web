@@ -4,10 +4,6 @@
 const STEP = 30;  // TOTP Intervall
 const DIGITS = 6; // Länge des Codes
 
-// Demo-Account (nur für Test)
-const DEMO_SECRET = 'JBSWY3DPEHPK3PXP';
-const DEMO_NAME = 'Demo Account';
-
 // --- Base32 Decoder ---
 function base32toBytes(base32) {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -47,18 +43,7 @@ async function totpFromBase32(secret) {
 
 // --- Vault Management ---
 let vault = [];
-
-function renderList() {
-  const listEl = document.getElementById('list');
-  listEl.innerHTML = '';
-  vault.forEach(async (acc,i)=>{
-    const {otp, secondsLeft} = await totpFromBase32(acc.secret);
-    const div = document.createElement('div');
-    div.className = 'row';
-    div.innerHTML = `<strong>${acc.name}</strong>: <span class="code">${otp}</span> <span class="muted">${secondsLeft}s</span>`;
-    listEl.appendChild(div);
-  });
-}
+let masterPw = null;
 
 // --- Encryption / Decryption (AES-GCM) ---
 async function deriveKey(pass, salt) {
@@ -90,12 +75,26 @@ async function loadVault(password) {
   }catch(e){ return false; }
 }
 
-// --- Event Handlers ---
+// --- Render TOTP Liste ---
+async function renderList() {
+  const listEl = document.getElementById('list');
+  listEl.innerHTML = '';
+  for(const acc of vault){
+    const {otp, secondsLeft} = await totpFromBase32(acc.secret);
+    const div = document.createElement('div');
+    div.className = 'row';
+    div.innerHTML = `<strong>${acc.name}</strong>: <span class="code">${otp}</span> <span class="muted">${secondsLeft}s</span>`;
+    listEl.appendChild(div);
+  }
+}
+
+// --- Auth Buttons ---
 document.getElementById('unlock').addEventListener('click', async ()=>{
   const pw = document.getElementById('pw').value;
   if(!pw) { alert('Master-Passwort eingeben!'); return; }
-  const loaded = await loadVault(pw);
-  if(loaded === null) { vault = []; } // Neues Vault
+  masterPw = pw;
+  const loaded = await loadVault(masterPw);
+  if(loaded === null){ vault = []; }
   document.getElementById('auth').style.display='none';
   document.getElementById('main').style.display='block';
   renderList();
@@ -108,49 +107,110 @@ document.getElementById('add').addEventListener('click', ()=>{
 });
 
 document.getElementById('export').addEventListener('click', async ()=>{
-  const pw = prompt('Master-Passwort zum Export:');
-  if(!pw) return;
-  await saveVault(pw);
-  alert('Vault lokal verschlüsselt gespeichert (localStorage).');
+  if(!masterPw) { alert('Zuerst entsperren!'); return; }
+  await saveVault(masterPw);
+  alert('Vault lokal verschlüsselt gespeichert.');
 });
 
 document.getElementById('lock').addEventListener('click', ()=>{
+  masterPw = null;
   document.getElementById('auth').style.display='block';
   document.getElementById('main').style.display='none';
   document.getElementById('pw').value='';
 });
 
-// --- Demo Account anzeigen ---
-vault.push({name:DEMO_NAME, secret:DEMO_SECRET});
-renderList();
+// --- Owner-Panel ---
+const ownerBtn = document.getElementById("ownerBtn");
+const ownerPanel = document.getElementById("ownerPanel");
+const closeOwner = document.getElementById("closeOwner");
+const ownerSetup = document.getElementById("ownerSetup");
+const ownerLogin = document.getElementById("ownerLogin");
+const ownerContent = document.getElementById("ownerContent");
+const ownerPinNew = document.getElementById("ownerPinNew");
+const ownerSetBtn = document.getElementById("ownerSetBtn");
+const ownerPinInput = document.getElementById("ownerPinInput");
+const ownerUnlock = document.getElementById("ownerUnlock");
+const ownerVaultList = document.getElementById("ownerVaultList");
+const ownerBack = document.getElementById("ownerBack");
+const ownerResetPin = document.getElementById("ownerResetPin");
+const resetVault = document.getElementById("resetVault");
 
-// --- Auto-Update alle 1 Sekunde ---
-setInterval(renderList,1000);
+let ownerPin = localStorage.getItem("ownerPin") || null;
 
-// app.js – hinzufügen am Ende
-window.ownerViewVault = async function(){
-    try {
-        // Dein verschlüsselter Vault aus localStorage
-        const encryptedVault = localStorage.getItem('vault'); // je nachdem, wie du es nennst
-        if(!encryptedVault){
-            alert('Kein Vault gefunden.');
-            return;
-        }
+ownerBtn.addEventListener("click", ()=>{
+  if(!ownerPin){
+    ownerSetup.style.display = "block";
+    ownerLogin.style.display = "none";
+  }else{
+    ownerSetup.style.display = "none";
+    ownerLogin.style.display = "block";
+  }
+  ownerContent.style.display = "none";
+  ownerPanel.style.display = "flex";
+});
 
-        // Master-Passwort wird aus Input geholt (oder bereits entschlüsselt im Unlock-Prozess)
-        const masterPw = document.getElementById('pw').value;
-        if(!masterPw){
-            alert('Bitte Master-Passwort im Hauptfeld eingeben.');
-            return;
-        }
+closeOwner.addEventListener("click", ()=>{
+  ownerPanel.style.display = "none";
+});
 
-        // Beispiel: einfache Entschlüsselung (AES-GCM)
-        // Du musst hier deinen eigenen Entschlüsselungs-Code aus app.js verwenden
-        const decryptedVault = await decryptVault(encryptedVault, masterPw); // deine Funktion
-        alert('Vault-Inhalt:\n' + JSON.stringify(decryptedVault, null, 2));
-    } catch(e){
-        console.error(e);
-        alert('Fehler beim Anzeigen des Vaults');
-    }
+// --- PIN Setup ---
+ownerSetBtn.addEventListener("click", ()=>{
+  const pin = ownerPinNew.value.trim();
+  if(!pin) return alert("PIN eingeben!");
+  localStorage.setItem("ownerPin", pin);
+  ownerPin = pin;
+  ownerSetup.style.display = "none";
+  alert("PIN gespeichert!");
+});
+
+// --- PIN Login ---
+ownerUnlock.addEventListener("click", ()=>{
+  const pin = ownerPinInput.value.trim();
+  if(pin === ownerPin){
+    ownerLogin.style.display = "none";
+    ownerContent.style.display = "block";
+    renderOwnerVault();
+  }else alert("Falscher PIN!");
+});
+
+// --- Owner Vault Render ---
+function renderOwnerVault(){
+  ownerVaultList.innerHTML = '';
+  vault.forEach(acc=>{
+    const div = document.createElement("div");
+    div.className = "vault-entry";
+    div.innerHTML = `<strong>${acc.name}</strong>: <span class="vault-secret">${acc.secret}</span>`;
+    ownerVaultList.appendChild(div);
+  });
 }
 
+ownerBack.addEventListener("click", ()=>{
+  ownerContent.style.display = "none";
+  ownerPanel.style.display = "none";
+});
+
+ownerResetPin.addEventListener("click", ()=>{
+  if(confirm("PIN wirklich zurücksetzen?")){
+    localStorage.removeItem("ownerPin");
+    ownerPin = null;
+    alert("PIN gelöscht!");
+    ownerContent.style.display = "none";
+  }
+});
+
+resetVault.addEventListener("click", ()=>{
+  if(confirm("Vault wirklich löschen?")){
+    vault = [];
+    saveVault(masterPw);
+    renderList();
+    renderOwnerVault();
+    alert("Vault gelöscht!");
+  }
+});
+
+// --- Demo Account & Auto-Update ---
+const DEMO_SECRET = 'JBSWY3DPEHPK3PXP';
+const DEMO_NAME = 'Demo Account';
+vault.push({name:DEMO_NAME, secret:DEMO_SECRET});
+renderList();
+setInterval(renderList, 1000);
