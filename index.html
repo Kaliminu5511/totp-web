@@ -1,39 +1,201 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>TOTP Web — Client-side (mit Owner PIN + Reset)</title>
-<link rel="stylesheet" href="style.css" />
-<style>
-  /* kleine Styles für Demo (füge in style.css wenn du willst) */
-  body{background:#111;color:#eee;font-family:system-ui,Segoe UI,Arial; padding:18px}
-  .container{max-width:980px;margin:0 auto}
-  .row{display:flex;gap:8px;align-items:center}
-  .card{background:#1a1a1a;padding:12px;border-radius:8px;margin-bottom:12px}
-  .primary{background:#2563eb;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer}
-  .muted{background:#374151;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer}
-  .danger{background:#dc2626;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer}
-  .smallbtn{padding:6px 8px;border-radius:6px;background:#374151;color:#fff;border:none;cursor:pointer}
-  .list{margin-top:8px}
-  .mutetxt{color:#9ca3af;font-size:13px}
-  .code{font-family:monospace;background:rgba(255,255,255,0.03);padding:2px 6px;border-radius:6px}
-  /* owner panel */
-  #ownerBtn{position:fixed;right:18px;bottom:18px;background:linear-gradient(145deg,#ffd36b,#ffb300);border:2px solid #b8860b;padding:8px;border-radius:10px;cursor:pointer}
-  #ownerPanel{position:fixed;right:18px;bottom:72px;width:340px;height:420px;background:#0b0b0c;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.6);display:none;flex-direction:column;overflow:hidden;color:#111}
-  #ownerPanel .card{background:transparent;padding:10px;color:#eee}
-  .chat-header{display:flex;justify-content:space-between;align-items:center;padding:8px;background:#111;border-bottom:1px solid rgba(255,255,255,0.03)}
-  .chat-title{font-weight:700}
-  #ownerContent{flex:1;overflow:auto;padding:8px;background:linear-gradient(180deg,#071021,#0b1220)}
-  .vault-entry{padding:8px;border-radius:10px;margin-bottom:8px;background:linear-gradient(90deg,#3b82f6,#7dd3fc);color:#021226;pointer-events:none}
-  .vault-meta{display:block;color:rgba(255,255,255,0.7);font-size:12px;margin-top:6px}
-  .vault-secret{font-family:monospace;margin-top:6px;display:block}
-  .owner-ctl{display:flex;gap:6px;padding:8px;border-top:1px solid rgba(255,255,255,0.03)}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TOTP Web — Client-side (mit Owner-PIN)</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <main id="app" class="container">
   <h1>🔐 TOTP Web (Client-Side)</h1>
+
+  <!-- Auth Bereich -->
+  <section id="auth" class="card">
+    <p>Master-Passwort (wird nur lokal verwendet):</p>
+    <div class="row">
+      <input id="pw" type="password" placeholder="Master-Passwort" />
+      <button id="unlock" class="primary">Entsperren / Neues Passwort</button>
+      <button id="import" class="muted">Import (verschlüsselte Datei)</button>
+      <input id="filein" type="file" style="display:none" />
+    </div>
+    <p class="mutetxt">
+      Wenn keine Daten vorhanden sind, legt Entsperren ein neues, leeres Vault an.
+    </p>
+  </section>
+
+  <!-- Hauptbereich -->
+  <section id="main" class="card" style="display:none">
+    <div class="controls row">
+      <button id="add" class="primary">Neuen Account</button>
+      <button id="export" class="muted">Export (verschlüsselt)</button>
+      <button id="lock" class="danger">Sperren</button>
+    </div>
+    <div id="list" class="list"></div>
+    <p class="mutetxt">
+      Die verschlüsselte Sicherungsdatei wird im Browser-Storage abgelegt.
+      <strong>Teile niemals dein Master-Passwort.</strong>
+    </p>
+  </section>
+
+  <footer class="card small">
+    <p>
+      Open Source — client-side only. Host via GitHub Pages / Netlify / Vercel mit HTTPS.
+    </p>
+  </footer>
+</main>
+
+<!-- Owner Button -->
+<button id="ownerBtn" class="smallbtn" title="Owner Control">🛡️ Owner</button>
+
+<!-- Owner Control Panel -->
+<aside id="ownerPanel" class="chat-panel" style="display:none">
+  <header class="chat-header">
+    <div class="chat-title">Besitzer-Kontrolle</div>
+    <button id="closeOwner" class="smallbtn">✕</button>
+  </header>
+
+  <!-- PIN Setup -->
+  <div id="ownerSetup" style="display:none">
+    <p>Noch kein PIN gesetzt. Bitte neuen PIN wählen (min. 4 Zeichen).</p>
+    <input id="ownerPinNew" type="password" placeholder="Neuen PIN festlegen">
+    <button id="ownerSetBtn" class="primary">PIN speichern</button>
+  </div>
+
+  <!-- PIN Login -->
+  <div id="ownerLogin" style="display:none">
+    <p>PIN eingeben, um Besitzer-Bereich zu öffnen.</p>
+    <input id="ownerPinInput" type="password" placeholder="PIN eingeben">
+    <button id="ownerUnlock" class="primary">Entsperren</button>
+  </div>
+
+  <!-- Owner Content -->
+  <div id="ownerContent" style="display:none">
+    <p><strong>⚠️ Besitzerrechte aktiv!</strong></p>
+    <div id="ownerVaultList" class="chat-list"></div>
+    <div class="owner-ctl">
+      <button id="ownerBack" class="muted">🔙 Zurück zum Vault</button>
+      <button id="ownerResetPin" class="muted">🔑 PIN zurücksetzen</button>
+      <button id="resetVault" class="danger">Vault zurücksetzen</button>
+    </div>
+  </div>
+</aside>
+
+<script>
+// ---------- Vault-Daten ----------
+let vault = [];
+
+// ---------- Owner PIN Storage ----------
+const OWNER_PIN_KEY = "owner_pin";
+
+// ---------- Helper ----------
+function escapeHtml(s){
+  return (s+"").replace(/[&<>"']/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+  ));
+}
+
+// ---------- Owner Panel ----------
+const ownerBtn = document.getElementById('ownerBtn');
+const ownerPanel = document.getElementById('ownerPanel');
+const closeOwner = document.getElementById('closeOwner');
+
+const ownerSetup = document.getElementById('ownerSetup');
+const ownerLogin = document.getElementById('ownerLogin');
+const ownerContent = document.getElementById('ownerContent');
+const ownerVaultList = document.getElementById('ownerVaultList');
+
+const ownerPinNew = document.getElementById('ownerPinNew');
+const ownerPinInput = document.getElementById('ownerPinInput');
+
+// Öffnen
+ownerBtn.addEventListener('click', ()=>{
+  ownerPanel.style.display = 'block';
+  if(!localStorage.getItem(OWNER_PIN_KEY)){
+    ownerSetup.style.display='block';
+    ownerLogin.style.display='none';
+    ownerContent.style.display='none';
+  } else {
+    ownerSetup.style.display='none';
+    ownerLogin.style.display='block';
+    ownerContent.style.display='none';
+  }
+});
+
+// Schließen
+closeOwner.addEventListener('click', ()=> ownerPanel.style.display='none');
+
+// PIN speichern
+document.getElementById('ownerSetBtn').addEventListener('click', ()=>{
+  if(ownerPinNew.value.length < 4){ alert("PIN zu kurz!"); return; }
+  localStorage.setItem(OWNER_PIN_KEY, ownerPinNew.value);
+  alert("PIN gespeichert.");
+  ownerSetup.style.display='none';
+  ownerLogin.style.display='block';
+});
+
+// PIN Login
+document.getElementById('ownerUnlock').addEventListener('click', ()=>{
+  const saved = localStorage.getItem(OWNER_PIN_KEY);
+  if(ownerPinInput.value === saved){
+    ownerLogin.style.display='none';
+    ownerContent.style.display='block';
+    renderOwnerVault();
+  } else {
+    alert("Falscher PIN!");
+  }
+});
+
+// PIN zurücksetzen (nur Besitzer)
+document.getElementById('ownerResetPin').addEventListener('click', ()=>{
+  const saved = localStorage.getItem(OWNER_PIN_KEY);
+  const oldPin = prompt("Alten PIN eingeben:");
+  if(oldPin !== saved){ alert("Falscher PIN!"); return; }
+  const newPin = prompt("Neuen PIN eingeben (min 4 Zeichen):");
+  if(!newPin || newPin.length<4){ alert("PIN zu kurz!"); return; }
+  localStorage.setItem(OWNER_PIN_KEY, newPin);
+  alert("PIN zurückgesetzt.");
+});
+
+// Zurück zum Vault
+document.getElementById('ownerBack').addEventListener('click', ()=>{
+  ownerPanel.style.display='none';
+  document.getElementById('main').style.display='block';
+});
+
+// Vault zurücksetzen
+document.getElementById('resetVault').addEventListener('click', ()=>{
+  if(confirm("Vault wirklich löschen?")){
+    vault = [];
+    renderOwnerVault();
+    document.getElementById('list').innerHTML = '';
+    alert("Vault zurückgesetzt!");
+  }
+});
+
+// Vault im Owner Panel anzeigen
+function renderOwnerVault(){
+  ownerVaultList.innerHTML = '';
+  if(vault.length === 0){
+    ownerVaultList.textContent = "Kein Eintrag im Vault.";
+    return;
+  }
+  vault.forEach(acc=>{
+    const div = document.createElement('div');
+    const created = acc.createdAt ? new Date(acc.createdAt).toLocaleString() : "unbekannt";
+    div.innerHTML = `<strong>${escapeHtml(acc.name)}</strong><br>
+                     Secret: <code>${escapeHtml(acc.secret)}</code><br>
+                     Erstellt: ${created}`;
+    ownerVaultList.appendChild(div);
+  });
+}
+
+// ---------- Beispiel Account ----------
+vault.push({ name:"Demo Account", secret:"JBSWY3DPEHPK3PXP", createdAt:new Date().toISOString() });
+</script>
+</body>
+</html>
+
 
   <section id="auth" class="card">
     <p>Master-Passwort (wird nur lokal verwendet):</p>
