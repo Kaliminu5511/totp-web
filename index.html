@@ -3,84 +3,115 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>TOTP Web — Client-side</title>
+<title>TOTP Web — Client-side (mit Owner PIN + Reset)</title>
 <link rel="stylesheet" href="style.css" />
 <style>
-  /* Minimal Styles für Owner Panel */
-  .smallbtn { font-size: 0.9em; padding: 0.3em 0.6em; }
-  .chat-panel { position: fixed; right: 10px; top: 10px; width: 300px; height: 400px; background:#fefefe; border:1px solid #ccc; display:flex; flex-direction:column; box-shadow:0 0 10px rgba(0,0,0,0.2); }
-  .chat-header { padding:5px; background:#ddd; display:flex; justify-content:space-between; align-items:center; }
-  .chat-title { font-weight:bold; }
-  #ownerContent { overflow-y:auto; flex:1; padding:5px; border-top:1px solid #ccc; }
-  .vault-entry { padding:5px; border-bottom:1px solid #eee; position:relative; }
-  .vault-entry::before { content:"🛡️"; position:absolute; left:-20px; top:5px; }
+  /* kleine Styles für Demo (füge in style.css wenn du willst) */
+  body{background:#111;color:#eee;font-family:system-ui,Segoe UI,Arial; padding:18px}
+  .container{max-width:980px;margin:0 auto}
+  .row{display:flex;gap:8px;align-items:center}
+  .card{background:#1a1a1a;padding:12px;border-radius:8px;margin-bottom:12px}
+  .primary{background:#2563eb;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer}
+  .muted{background:#374151;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer}
+  .danger{background:#dc2626;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer}
+  .smallbtn{padding:6px 8px;border-radius:6px;background:#374151;color:#fff;border:none;cursor:pointer}
+  .list{margin-top:8px}
+  .mutetxt{color:#9ca3af;font-size:13px}
+  .code{font-family:monospace;background:rgba(255,255,255,0.03);padding:2px 6px;border-radius:6px}
+  /* owner panel */
+  #ownerBtn{position:fixed;right:18px;bottom:18px;background:linear-gradient(145deg,#ffd36b,#ffb300);border:2px solid #b8860b;padding:8px;border-radius:10px;cursor:pointer}
+  #ownerPanel{position:fixed;right:18px;bottom:72px;width:340px;height:420px;background:#0b0b0c;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.6);display:none;flex-direction:column;overflow:hidden;color:#111}
+  #ownerPanel .card{background:transparent;padding:10px;color:#eee}
+  .chat-header{display:flex;justify-content:space-between;align-items:center;padding:8px;background:#111;border-bottom:1px solid rgba(255,255,255,0.03)}
+  .chat-title{font-weight:700}
+  #ownerContent{flex:1;overflow:auto;padding:8px;background:linear-gradient(180deg,#071021,#0b1220)}
+  .vault-entry{padding:8px;border-radius:10px;margin-bottom:8px;background:linear-gradient(90deg,#3b82f6,#7dd3fc);color:#021226;pointer-events:none}
+  .vault-meta{display:block;color:rgba(255,255,255,0.7);font-size:12px;margin-top:6px}
+  .vault-secret{font-family:monospace;margin-top:6px;display:block}
+  .owner-ctl{display:flex;gap:6px;padding:8px;border-top:1px solid rgba(255,255,255,0.03)}
 </style>
 </head>
 <body>
 <main id="app" class="container">
-<h1>🔐 TOTP Web (Client-Side)</h1>
+  <h1>🔐 TOTP Web (Client-Side)</h1>
 
-<section id="auth" class="card">
-  <p>Master-Passwort (wird nur lokal verwendet):</p>
-  <div class="row">
-    <input id="pw" type="password" placeholder="Master-Passwort" />
-    <button id="unlock" class="primary">Entsperren / Neues Passwort</button>
-    <button id="import" class="muted">Import (verschlüsselte Datei)</button>
-    <input id="filein" type="file" style="display:none" />
-  </div>
-  <p class="mutetxt">Wenn keine Daten vorhanden sind, legt Entsperren ein neues, leeres Vault an.</p>
-</section>
+  <section id="auth" class="card">
+    <p>Master-Passwort (wird nur lokal verwendet):</p>
+    <div class="row">
+      <input id="pw" type="password" placeholder="Master-Passwort" />
+      <button id="unlock" class="primary">Entsperren / Neues Passwort</button>
+      <button id="import" class="muted">Import (verschlüsselte Datei)</button>
+      <input id="filein" type="file" style="display:none" />
+    </div>
+    <p class="mutetxt">Wenn keine Daten vorhanden sind, legt Entsperren ein neues, leeres Vault an.</p>
+  </section>
 
-<section id="main" class="card" style="display:none">
-  <div class="controls row">
-    <button id="add" class="primary">Neuen Account</button>
-    <button id="export" class="muted">Export (verschlüsselt)</button>
-    <button id="lock" class="danger">Sperren</button>
-  </div>
-  <div id="list" class="list"></div>
-  <p class="mutetxt">Die verschlüsselte Sicherungsdatei wird im Browser-Storage abgelegt. <strong>Teile niemals dein Master-Passwort.</strong></p>
-</section>
+  <section id="main" class="card" style="display:none">
+    <div class="controls row">
+      <button id="add" class="primary">Neuen Account</button>
+      <button id="export" class="muted">Export (verschlüsselt)</button>
+      <button id="lock" class="danger">Sperren</button>
+    </div>
+    <div id="list" class="list"></div>
+    <p class="mutetxt">Die verschlüsselte Sicherungsdatei wird im Browser-Storage abgelegt. <strong>Teile niemals dein Master-Passwort.</strong></p>
+  </section>
 
-<footer class="card small">
-<p>Open Source — client-side only. Host via GitHub Pages / Netlify / Vercel mit HTTPS.</p>
-</footer>
+  <footer class="card small">
+    <p style="color:#9ca3af">Open Source — client-side only. Host via GitHub Pages / Netlify / Vercel mit HTTPS.</p>
+  </footer>
 </main>
 
 <!-- Owner Control Button -->
-<button id="ownerBtn" class="smallbtn" title="Owner Control">🛡️ Owner</button>
+<button id="ownerBtn" title="Owner Control">🛡️ Owner</button>
 
 <!-- Owner Control Panel -->
-<aside id="ownerPanel" class="chat-panel" style="display:none">
-  <header class="chat-header">
+<aside id="ownerPanel">
+  <div class="chat-header">
     <div class="chat-title">Besitzer-Kontrolle</div>
     <button id="closeOwner" class="smallbtn">✕</button>
-  </header>
+  </div>
 
   <!-- PIN Setup -->
-  <div id="ownerSetup" style="display:none">
+  <div id="ownerSetup" class="card" style="display:none">
+    <p style="color:#9ca3af">Noch kein PIN gesetzt. Bitte neuen PIN wählen (min. 4 Zeichen).</p>
     <input id="ownerPinNew" type="password" placeholder="Neuen PIN festlegen">
+    <div style="height:8px"></div>
     <button id="ownerSetBtn" class="primary">PIN speichern</button>
   </div>
 
   <!-- PIN Login -->
-  <div id="ownerLogin" style="display:none">
+  <div id="ownerLogin" class="card" style="display:none">
+    <p style="color:#9ca3af">PIN eingeben, um Besitzer-Bereich zu öffnen.</p>
     <input id="ownerPinInput" type="password" placeholder="PIN eingeben">
+    <div style="height:8px"></div>
     <button id="ownerUnlock" class="primary">Entsperren</button>
   </div>
 
   <!-- Owner Content -->
-  <div id="ownerContent" style="display:none"></div>
-  <div style="padding:5px;">
-    <button id="resetVault" class="danger">Vault zurücksetzen</button>
+  <div id="ownerContent" style="display:none">
+    <div id="ownerContentInner"></div>
+    <div class="owner-ctl">
+      <button id="ownerResetPin" class="muted">🔑 PIN zurücksetzen</button>
+      <button id="resetVault" class="danger">Vault zurücksetzen</button>
+    </div>
   </div>
 </aside>
 
 <script>
-// --- Minimal TOTP + Vault ---
-const STEP=30,DIGITS=6;
-const DEMO_SECRET='JBSWY3DPEHPK3PXP';
-const DEMO_NAME='Demo Account';
+/* -------------------------
+   Vollständiges integriertes Script
+   - Vault AES-GCM (totp_vault)
+   - TOTP generierung
+   - Owner PIN: PBKDF2 verifier with salt & iterations
+   - PIN Reset (nur nach Auth, verlangt alten PIN)
+   - createdAt timestamp für neue Accounts
+   ------------------------- */
 
+const STEP = 30, DIGITS = 6;
+const DEMO_SECRET = 'JBSWY3DPEHPK3PXP';
+const DEMO_NAME = 'Demo Account';
+
+// ---------- Base32 -> bytes ----------
 function base32toBytes(base32){
   const alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   base32=(base32||'').toUpperCase().replace(/=+$/,'').replace(/[^A-Z2-7]/g,'');
@@ -89,153 +120,277 @@ function base32toBytes(base32){
   return new Uint8Array(bytes);
 }
 
+// ---------- HOTP / TOTP ----------
 async function hotp(keyBytes,counter){
-  const key=await crypto.subtle.importKey('raw',keyBytes,{name:'HMAC',hash:'SHA-1'},false,['sign']);
-  const buf=new ArrayBuffer(8), view=new DataView(buf);
-  view.setUint32(0,Math.floor(counter/0x100000000),false);
-  view.setUint32(4,counter>>>0,false);
-  const sig=new Uint8Array(await crypto.subtle.sign('HMAC',key,buf));
-  const offset=sig[sig.length-1]&0xf;
-  const code=(((sig[offset]&0x7f)<<24)|((sig[offset+1]&0xff)<<16)|((sig[offset+2]&0xff)<<8)|(sig[offset+3]&0xff))>>>0;
+  const key = await crypto.subtle.importKey('raw', keyBytes, {name:'HMAC', hash:'SHA-1'}, false, ['sign']);
+  const buf = new ArrayBuffer(8), dv = new DataView(buf);
+  dv.setUint32(0, Math.floor(counter/0x100000000), false);
+  dv.setUint32(4, counter>>>0, false);
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, buf));
+  const offset = sig[sig.length - 1] & 0xf;
+  const code = (((sig[offset]&0x7f) << 24) | ((sig[offset+1]&0xff)<<16) | ((sig[offset+2]&0xff)<<8) | (sig[offset+3]&0xff)) >>> 0;
   return code;
 }
-
 async function totpFromBase32(secret){
-  const kb=base32toBytes(secret);
-  const counter=Math.floor(Date.now()/1000/STEP);
-  const n=await hotp(kb,counter);
-  const otp=(n%(10**DIGITS)).toString().padStart(DIGITS,'0');
-  const secondsLeft=STEP-(Math.floor(Date.now()/1000)%STEP);
-  return {otp,secondsLeft};
+  const kb = base32toBytes(secret);
+  const counter = Math.floor(Date.now()/1000 / STEP);
+  const n = await hotp(kb, counter);
+  const otp = (n % (10**DIGITS)).toString().padStart(DIGITS,'0');
+  const secondsLeft = STEP - (Math.floor(Date.now()/1000) % STEP);
+  return { otp, secondsLeft };
 }
 
-// --- Vault ---
-let vault=[];
-function renderList(){
-  const listEl=document.getElementById('list'); listEl.innerHTML='';
-  vault.forEach(async(acc,i)=>{
-    const {otp,secondsLeft}=await totpFromBase32(acc.secret);
-    const div=document.createElement('div');
-    div.className='row'; div.innerHTML=`<strong>${acc.name}</strong>: <span class="code">${otp}</span> <span class="muted">${secondsLeft}s</span>`;
-    listEl.appendChild(div);
-  });
-}
+// ---------- Vault (AES-GCM encrypted) ----------
+const VAULT_KEY = 'totp_vault_v1';
 
-// --- AES-GCM ---
-async function deriveKey(pass,salt){
-  const enc=new TextEncoder();
-  const base=await crypto.subtle.importKey('raw',enc.encode(pass),'PBKDF2',false,['deriveKey']);
-  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:120000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+async function deriveKeyAES(pass, salt, iterations=120000){
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name:'PBKDF2', salt, iterations, hash:'SHA-256' }, base, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
 }
 
 async function saveVault(password){
-  const salt=crypto.getRandomValues(new Uint8Array(16));
-  const iv=crypto.getRandomValues(new Uint8Array(12));
-  const key=await deriveKey(password,salt);
-  const plain=new TextEncoder().encode(JSON.stringify(vault));
-  const cipher=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plain));
-  localStorage.setItem('vault',btoa(String.fromCharCode(...salt,...iv,...cipher)));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKeyAES(password, salt);
+  const plain = new TextEncoder().encode(JSON.stringify(vault));
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, plain));
+  const packed = new Uint8Array([...salt, ...iv, ...cipher]);
+  localStorage.setItem(VAULT_KEY, btoa(String.fromCharCode(...packed)));
 }
 
 async function loadVault(password){
-  const b=localStorage.getItem('vault'); if(!b) return null;
-  const raw=Uint8Array.from(atob(b),c=>c.charCodeAt(0));
-  const salt=raw.slice(0,16), iv=raw.slice(16,28), cipher=raw.slice(28);
-  const key=await deriveKey(password,salt);
-  try{ const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,cipher); vault=JSON.parse(new TextDecoder().decode(plain)); return true;}
-  catch(e){ return false; }
+  const data = localStorage.getItem(VAULT_KEY);
+  if(!data) return null;
+  const raw = Uint8Array.from(atob(data), c => c.charCodeAt(0));
+  const salt = raw.slice(0,16), iv = raw.slice(16,28), cipher = raw.slice(28);
+  const key = await deriveKeyAES(password, salt);
+  try {
+    const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, cipher);
+    vault = JSON.parse(new TextDecoder().decode(plain));
+    return true;
+  } catch(e) {
+    return false;
+  }
 }
 
-// --- Events ---
-document.getElementById('unlock').addEventListener('click',async()=>{
-  const pw=document.getElementById('pw').value; if(!pw){ alert('Master-Passwort eingeben!'); return; }
-  const loaded=await loadVault(pw); if(loaded===null){ vault=[]; await saveVault(pw); }
+// ---------- Vault in-memory ----------
+let vault = [];
+
+// ---------- Render Hauptliste ----------
+async function renderList(){
+  const listEl = document.getElementById('list');
+  listEl.innerHTML = '';
+  for(const acc of vault){
+    const { otp, secondsLeft } = await totpFromBase32(acc.secret);
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `<strong>${escapeHtml(acc.name)}</strong>: <span class="code">${otp}</span> <span class="mutetxt">${secondsLeft}s</span>`;
+    listEl.appendChild(div);
+  }
+}
+
+// ---------- Escape helper ----------
+function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+
+// ---------- Events (Unlock/Add/Export/Lock) ----------
+document.getElementById('unlock').addEventListener('click', async ()=>{
+  const pw = document.getElementById('pw').value;
+  if(!pw){ alert('Master-Passwort eingeben!'); return; }
+  const loaded = await loadVault(pw);
+  if(loaded === null){
+    vault = [];
+    await saveVault(pw);
+  }
   document.getElementById('auth').style.display='none';
   document.getElementById('main').style.display='block';
-  renderList();
+  await renderList();
 });
 
-document.getElementById('add').addEventListener('click',()=>{
-  const name=prompt('Account-Name'); const secret=prompt('Base32 Secret');
-  if(name&&secret){ vault.push({name,secret}); renderList(); }
+document.getElementById('add').addEventListener('click', async ()=>{
+  const name = prompt('Account-Name');
+  const secret = prompt('Base32 Secret (z.B. JBSWY3DPEHPK3PXP)');
+  if(name && secret){
+    const item = { name: name.trim(), secret: secret.trim().replace(/\s+/g,''), createdAt: new Date().toISOString() };
+    vault.push(item);
+    await renderList();
+  }
 });
 
-document.getElementById('export').addEventListener('click',async()=>{
-  const pw=prompt('Master-Passwort zum Export:'); if(!pw) return;
-  await saveVault(pw); alert('Vault lokal verschlüsselt gespeichert.');
+document.getElementById('export').addEventListener('click', async ()=>{
+  const pw = prompt('Master-Passwort zum Export:');
+  if(!pw) return;
+  await saveVault(pw);
+  alert('Vault lokal verschlüsselt gespeichert.');
 });
 
-document.getElementById('lock').addEventListener('click',()=>{
+document.getElementById('lock').addEventListener('click', ()=>{
   document.getElementById('auth').style.display='block';
   document.getElementById('main').style.display='none';
   document.getElementById('pw').value='';
 });
 
-// Demo
-vault.push({name:DEMO_NAME,secret:DEMO_SECRET});
+// Demo item so user sees something before saving
+vault.push({ name: DEMO_NAME, secret: DEMO_SECRET, createdAt: new Date().toISOString() });
 renderList();
-setInterval(renderList,1000);
+setInterval(renderList, 1000);
 
-// --- Owner Panel ---
-const ownerBtn=document.getElementById('ownerBtn');
-const ownerPanel=document.getElementById('ownerPanel');
-const ownerSetup=document.getElementById('ownerSetup');
-const ownerLogin=document.getElementById('ownerLogin');
-const ownerContent=document.getElementById('ownerContent');
-const closeOwner=document.getElementById('closeOwner');
-const ownerPinKey='ownerPin';
+// ========== Owner PIN logic (PBKDF2 verifier) ==========
+const OWNER_META_KEY = 'owner_meta_v1';
+const OWNER_PBKDF2_ITER = 200000; // teuer genug
+const OWNER_KEY_LEN = 256;
+const VERIFIER_TEXT = 'projektmira-owner-verifier-v1';
 
-function checkOwnerPinExists(){
-  if(localStorage.getItem(ownerPinKey)) ownerLogin.style.display='block';
-  else ownerSetup.style.display='block';
+// helpers base64/array
+const arrToB64 = u => btoa(String.fromCharCode(...u));
+const b64ToArr = s => Uint8Array.from(atob(s||''), c=>c.charCodeAt(0));
+const utf8 = s => new TextEncoder().encode(s);
+
+async function deriveOwnerBytes(pin, salt, iterations=OWNER_PBKDF2_ITER){
+  const base = await crypto.subtle.importKey('raw', utf8(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt, iterations, hash:'SHA-256' }, base, OWNER_KEY_LEN);
+  return new Uint8Array(bits);
+}
+async function makeVerifier(derivedBytes){
+  const key = await crypto.subtle.importKey('raw', derivedBytes, { name:'HMAC', hash:'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, utf8(VERIFIER_TEXT));
+  return new Uint8Array(sig);
 }
 
-ownerBtn.addEventListener('click',()=>{
-  ownerPanel.style.display='flex';
-  checkOwnerPinExists();
-});
-closeOwner.addEventListener('click',()=>{ ownerPanel.style.display='none'; });
+function readOwnerMeta(){ try{ const raw=localStorage.getItem(OWNER_META_KEY); return raw?JSON.parse(raw):null }catch(e){return null} }
+function writeOwnerMeta(obj){ localStorage.setItem(OWNER_META_KEY, JSON.stringify(obj)); }
 
-// PIN Setup
-document.getElementById('ownerSetBtn').addEventListener('click',()=>{
-  const pin=document.getElementById('ownerPinNew').value;
-  if(!pin){ alert('PIN eingeben'); return; }
-  localStorage.setItem(ownerPinKey,pin);
-  ownerSetup.style.display='none';
-  ownerLogin.style.display='block';
-  alert('PIN gespeichert');
-});
+// set initial PIN (store salt + verifier)
+async function setOwnerPin(pin){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const derived = await deriveOwnerBytes(pin, salt);
+  const verifier = await makeVerifier(derived);
+  const meta = { salt: arrToB64(salt), verifier: arrToB64(verifier), iterations: OWNER_PBKDF2_ITER, createdAt: Date.now() };
+  writeOwnerMeta(meta);
+  // zero arrays (best-effort)
+  derived.fill(0); verifier.fill(0);
+  return true;
+}
 
-// PIN Login
-document.getElementById('ownerUnlock').addEventListener('click',()=>{
-  const pin=document.getElementById('ownerPinInput').value;
-  const stored=localStorage.getItem(ownerPinKey);
-  if(pin===stored){
+// check PIN
+async function checkOwnerPin(pin){
+  const meta = readOwnerMeta(); if(!meta) return false;
+  const salt = b64ToArr(meta.salt);
+  const derived = await deriveOwnerBytes(pin, salt, meta.iterations || OWNER_PBKDF2_ITER);
+  const verifier = await makeVerifier(derived);
+  const ok = arrToB64(verifier) === (meta.verifier||'');
+  derived.fill(0); verifier.fill(0);
+  return ok;
+}
+
+// reset PIN (requires oldPin)
+async function resetOwnerPin(oldPin, newPin){
+  const ok = await checkOwnerPin(oldPin);
+  if(!ok) return false;
+  await setOwnerPin(newPin);
+  return true;
+}
+
+// UI wiring for owner panel
+const ownerBtn = document.getElementById('ownerBtn');
+const ownerPanel = document.getElementById('ownerPanel');
+const ownerSetup = document.getElementById('ownerSetup');
+const ownerLogin = document.getElementById('ownerLogin');
+const ownerContent = document.getElementById('ownerContent');
+const ownerContentInner = document.getElementById('ownerContentInner');
+const closeOwner = document.getElementById('closeOwner');
+const ownerSetBtn = document.getElementById('ownerSetBtn');
+const ownerUnlock = document.getElementById('ownerUnlock');
+const ownerPinNew = document.getElementById('ownerPinNew');
+const ownerPinInput = document.getElementById('ownerPinInput');
+const ownerResetPinBtn = document.getElementById('ownerResetPin');
+const resetVaultBtn = document.getElementById('resetVault');
+
+function showOwnerPanel(){
+  ownerPanel.style.display = 'flex';
+  const meta = readOwnerMeta();
+  if(!meta){
+    ownerSetup.style.display='block';
     ownerLogin.style.display='none';
-    ownerContent.style.display='block';
-    renderOwnerVault();
-  } else alert('Falscher PIN');
+    ownerContent.style.display='none';
+  } else {
+    ownerSetup.style.display='none';
+    ownerLogin.style.display='block';
+    ownerContent.style.display='none';
+  }
+}
+ownerBtn.addEventListener('click', showOwnerPanel);
+closeOwner.addEventListener('click', ()=> ownerPanel.style.display='none');
+
+// set PIN (first time)
+ownerSetBtn.addEventListener('click', async ()=>{
+  const pin = (ownerPinNew.value||'').trim();
+  if(pin.length < 4){ alert('PIN mindestens 4 Zeichen'); return; }
+  await setOwnerPin(pin);
+  ownerPinNew.value='';
+  alert('PIN gespeichert. Öffne Owner erneut und melde dich an.');
+  showOwnerPanel();
 });
 
-// Owner Vault anzeigen
-function renderOwnerVault(){
-  ownerContent.innerHTML='';
-  vault.forEach(acc=>{
-    const div=document.createElement('div');
-    div.className='vault-entry';
-    div.textContent=`${acc.name}: ${acc.secret}`;
-    ownerContent.appendChild(div);
-  });
+// login PIN
+ownerUnlock.addEventListener('click', async ()=>{
+  const pin = (ownerPinInput.value||'').trim();
+  if(!pin){ alert('PIN eingeben'); return; }
+  const ok = await checkOwnerPin(pin);
+  if(!ok){ alert('Falscher PIN'); return; }
+  ownerLogin.style.display='none';
+  ownerContent.style.display='block';
+  ownerPanel.style.display='flex';
+  ownerPinInput.value='';
+  renderOwnerContent();
+});
+
+// render owner content: show vault secrets + timestamps
+async function renderOwnerContent(){
+  ownerContentInner.innerHTML = '';
+  if(!vault || vault.length===0){
+    ownerContentInner.innerHTML = '<div style="padding:8px;color:#9ca3af">Kein Eintrag im Vault.</div>';
+    return;
+  }
+  for(const acc of vault){
+    const d = document.createElement('div');
+    d.className = 'vault-entry';
+    const created = acc.createdAt ? new Date(acc.createdAt).toLocaleString() : 'unbekannt';
+    d.innerHTML = `<strong>${escapeHtml(acc.name)}</strong>
+                   <div class="vault-meta">Erstellt: ${escapeHtml(created)}</div>
+                   <div class="vault-secret">${escapeHtml(acc.secret)}</div>`;
+    ownerContentInner.appendChild(d);
+  }
+  ownerContent.scrollTop = ownerContent.scrollHeight;
 }
 
-// Vault zurücksetzen
-document.getElementById('resetVault').addEventListener('click',()=>{
-  if(confirm('Vault wirklich zurücksetzen?')){
-    vault=[]; localStorage.removeItem('vault'); renderList(); ownerContent.innerHTML='';
-    alert('Vault gelöscht');
-  }
+// PIN-Reset flow (only callable by logged-in owner)
+ownerResetPinBtn.addEventListener('click', async ()=>{
+  // confirm old PIN first
+  const oldPin = prompt('Alten PIN eingeben (erforderlich):');
+  if(!oldPin) return;
+  const ok = await checkOwnerPin(oldPin);
+  if(!ok){ alert('Alter PIN falsch — Abbruch'); return; }
+  const newPin = prompt('Neuen PIN eingeben (min 4 Zeichen):');
+  if(!newPin || newPin.length<4){ alert('Neuer PIN zu kurz'); return; }
+  await resetOwnerPin(oldPin, newPin);
+  alert('PIN wurde zurückgesetzt.');
 });
 
+// reset vault (destructive)
+resetVaultBtn.addEventListener('click', ()=>{
+  if(!confirm('Vault wirklich unwiderruflich löschen?')) return;
+  vault = [];
+  localStorage.removeItem(VAULT_KEY);
+  renderList();
+  ownerContentInner.innerHTML = '';
+  alert('Vault gelöscht.');
+});
+
+// small helper: expose ownerUnlock programmatically if needed
+window.ownerAPI = { setOwnerPin, checkOwnerPin, resetOwnerPin };
+
+// done
 </script>
 </body>
 </html>
