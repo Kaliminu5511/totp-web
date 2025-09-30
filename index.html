@@ -1,37 +1,114 @@
 <!doctype html> 
 <html lang="de"> 
 <head> 
-<meta charset="utf-8" /> 
-<meta name="viewport" content="width=device-width,initial-scale=1" /> 
-<title>TOTP Web — Client-side</title> 
-<link rel="stylesheet" href="style.css" /> 
+  <meta charset="utf-8" /> 
+  <meta name="viewport" content="width=device-width,initial-scale=1" /> 
+  <title>TOTP Web — Client-side</title> 
+  <link rel="stylesheet" href="style.css" /> 
+  <style>
+    /* Goldener Owner Button */
+    #ownerBtn {
+      background: linear-gradient(145deg, gold, orange);
+      border: 2px solid #b8860b;
+      color: black;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-left: 8px;
+    }
+    #ownerBtn:hover {
+      background: linear-gradient(145deg, #ffdf00, #ff8c00);
+    }
+
+    /* Overlay Panel */
+    #ownerPanel {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+    #ownerPanel .card {
+      background: #fff;
+      padding: 1em;
+      border-radius: 10px;
+      min-width: 280px;
+    }
+    #ownerPanel .chat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #ownerPanel .chat-title {
+      font-size: 1.2em;
+      font-weight: bold;
+    }
+  </style>
 </head> 
 <body> 
-<main id="app" class="container"> 
-<h1>🔐 TOTP Web (Client-Side)</h1> 
-<section id="auth" class="card"> 
-<p>Master-Passwort (wird nur lokal verwendet):</p> 
-<div class="row"> 
-<input id="pw" type="password" placeholder="Master-Passwort" /> 
-<button id="unlock" class="primary">Entsperren / Neues Passwort</button> 
-<button id="import" class="muted">Import (verschlüsselte Datei)</button> 
-<input id="filein" type="file" style="display:none" /> 
-</div> 
-<p class="mutetxt">Wenn keine Daten vorhanden sind, legt Entsperren ein neues, leeres Vault an.</p> 
-</section> 
-<section id="main" class="card" style="display:none"> 
-<div class="controls row"> 
-<button id="add" class="primary">Neuen Account</button> 
-<button id="export" class="muted">Export (verschlüsselt)</button> 
-<button id="lock" class="danger">Sperren</button> 
-</div> 
-<div id="list" class="list"></div> 
-<p class="mutetxt">Die verschlüsselte Sicherungsdatei wird im Browser-Storage abgelegt. <strong>Teile niemals dein Master-Passwort.</strong></p> 
-</section> 
-<footer class="card small"> 
-<p>Open Source — client-side only. Host via GitHub Pages / Netlify / Vercel mit HTTPS.</p> 
-</footer> 
-</main> 
-<script src="app.js"></script> 
+  <main id="app" class="container"> 
+    <h1>🔐 TOTP Web (Client-Side)</h1> 
+
+    <section id="auth" class="card"> 
+      <p>Master-Passwort (wird nur lokal verwendet):</p> 
+      <div class="row"> 
+        <input id="pw" type="password" placeholder="Master-Passwort" /> 
+        <button id="unlock" class="primary">Entsperren / Neues Passwort</button> 
+        <button id="import" class="muted">Import (verschlüsselte Datei)</button> 
+        <input id="filein" type="file" style="display:none" /> 
+      </div> 
+      <p class="mutetxt">Wenn keine Daten vorhanden sind, legt Entsperren ein neues, leeres Vault an.</p> 
+    </section> 
+
+    <section id="main" class="card" style="display:none"> 
+      <div class="controls row"> 
+        <button id="add" class="primary">Neuen Account</button> 
+        <button id="export" class="muted">Export (verschlüsselt)</button> 
+        <button id="lock" class="danger">Sperren</button> 
+        <button id="ownerBtn" title="Owner Control">🛡️ Owner</button>
+      </div> 
+      <div id="list" class="list"></div> 
+      <p class="mutetxt">Die verschlüsselte Sicherungsdatei wird im Browser-Storage abgelegt. <strong>Teile niemals dein Master-Passwort.</strong></p> 
+    </section> 
+
+    <footer class="card small"> 
+      <p>Open Source — client-side only. Host via GitHub Pages / Netlify / Vercel mit HTTPS.</p> 
+    </footer> 
+  </main> 
+
+  <!-- Owner Control Panel -->
+  <aside id="ownerPanel" style="display:none">
+    <div class="card">
+      <header class="chat-header">
+        <div class="chat-title">Besitzer-Kontrolle</div>
+        <button id="closeOwner" class="smallbtn">✕</button>
+      </header>
+
+      <!-- PIN Setup (nur sichtbar wenn noch kein PIN gespeichert) -->
+      <div id="ownerSetup" style="display:none">
+        <input id="ownerPinNew" type="password" placeholder="Neuen PIN festlegen">
+        <button id="ownerSetBtn" class="primary">PIN speichern</button>
+      </div>
+
+      <!-- PIN Login -->
+      <div id="ownerLogin" style="display:none">
+        <input id="ownerPinInput" type="password" placeholder="PIN eingeben">
+        <button id="ownerUnlock" class="primary">Entsperren</button>
+      </div>
+
+      <!-- Owner Content -->
+      <div id="ownerContent" style="display:none">
+        <p><strong>⚠️ Besitzerrechte aktiv!</strong></p>
+        <button id="viewVault" class="primary">Verschlüsselte Daten anzeigen</button>
+        <button id="resetVault" class="danger">Vault zurücksetzen</button>
+      </div>
+    </div>
+  </aside>
+
+  <script src="app.js"></script> 
+  <script src="owner.js"></script> 
 </body> 
-</html> 
+</html>
