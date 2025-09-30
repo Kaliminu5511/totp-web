@@ -1,4 +1,4 @@
-// --- Minimal TOTP Web App JS ---
+// --- Minimal OTP Web App JS V.5.2.0 ---
 // Funktioniert direkt mit index.html von deinem Repo
 
 const STEP = 30;  // TOTP Intervall
